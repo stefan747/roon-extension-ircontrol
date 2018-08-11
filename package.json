@@ -1,0 +1,15 @@
+{
+  "name": "roon-extension-IRControl",
+  "version": "1.0.0",
+  "description": "Roon Extension to let Roon control IR devices stand by",
+  "main": "app.js",
+  "author": "Stefan Kruzlik",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "lirc_node": "github:alexbain/lirc_node",
+    "node-roon-api": "github:roonlabs/node-roon-api",
+    "node-roon-api-settings": "github:roonlabs/node-roon-api-settings",
+    "node-roon-api-source-control": "github:roonlabs/node-roon-api-source-control",
+    "node-roon-api-status": "github:roonlabs/node-roon-api-status"
+  }
+}

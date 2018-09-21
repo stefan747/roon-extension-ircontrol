@@ -1,15 +1,42 @@
 {
-  "name": "roon-extension-ircontrol",
-  "version": "1.0.0",
-  "description": "Roon Extension to let Roon control IR devices stand by",
-  "main": "app.js",
-  "author": "Stefan Kruzlik",
-  "license": "Apache-2.0",
+  "_from": "roon-extension-ircontrol",
+  "_id": "roon-extension-ircontrol@1.0.0",
+  "_inBundle": false,
+  "_integrity": "sha512-97Ajn/8m0KZcXcvKKGvBqWedepdzeBKcpS4NK1eoociQxDYOm51bmFZjklnjTUE9+cLJ93SJJhS5f/2ZTQfFVg==",
+  "_location": "/roon-extension-ircontrol",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "tag",
+    "registry": true,
+    "raw": "roon-extension-ircontrol",
+    "name": "roon-extension-ircontrol",
+    "escapedName": "roon-extension-ircontrol",
+    "rawSpec": "",
+    "saveSpec": null,
+    "fetchSpec": "latest"
+  },
+  "_requiredBy": [
+    "#USER"
+  ],
+  "_resolved": "https://registry.npmjs.org/roon-extension-ircontrol/-/roon-extension-ircontrol-1.0.0.tgz",
+  "_shasum": "7be7bdb5a1ccc677d63be278e3996fb17690bdb6",
+  "_spec": "roon-extension-ircontrol",
+  "_where": "/mw/data/sources",
+  "author": {
+    "name": "Stefan Kruzlik"
+  },
+  "bundleDependencies": false,
   "dependencies": {
     "lirc_node": "github:alexbain/lirc_node",
     "node-roon-api": "github:roonlabs/node-roon-api",
     "node-roon-api-settings": "github:roonlabs/node-roon-api-settings",
     "node-roon-api-source-control": "github:roonlabs/node-roon-api-source-control",
     "node-roon-api-status": "github:roonlabs/node-roon-api-status"
-  }
+  },
+  "deprecated": false,
+  "description": "Roon Extension to let Roon control IR devices stand by",
+  "license": "Apache-2.0",
+  "main": "app.js",
+  "name": "roon-extension-ircontrol",
+  "version": "1.0.1"
 }

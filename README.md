@@ -23,3 +23,6 @@ This is my personal setup, but any Linux based device can be setup the same way:
 - Lirc RemoteControl Name: Name of the Lirc remote setup in /etc/lirc/lircd.conf
 - Lirc RemoteControl Command: Name of the Lirc remote command setup in /etc/lirc/lircd.conf for powering the device on and off
 - Startup Time: Time in seconds it takes to wake up the device controlled by IR before any stream is started
+
+##v1.0.1
+- Saving device status in settings file, so it is remembered even after script crash and restart

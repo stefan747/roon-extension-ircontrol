@@ -17,8 +17,9 @@ var roon = new RoonApi({
 
 var mysettings = roon.load_config("settings") || {
     remoteName:    "",
-    remoteCommand:     "Power",
-    startuptime: 15
+    remoteCommand: "Power",
+    startuptime:   15,
+    deviceStatus:  "Standby"
 };
 
 var irdevice = { };
@@ -85,7 +86,7 @@ roon.init_services({
 
 function setup() {
     console.log("[IRControl Extension] Setup: ", mysettings.remoteName);
-    irdevice.source = "Standby";
+    irdevice.source = mysettings.deviceStatus;
     irdevice.control = IRControl;
     //initialize lirc_node
     irdevice.control.init();
@@ -156,6 +157,8 @@ function ev_source(val) {
     else {
     irdevice.source_control.update_state({ status: "selected" });
     }
+    mysettings.deviceStatus = val;
+    roon.save_config("settings", mysettings);
 }
 
 setup();

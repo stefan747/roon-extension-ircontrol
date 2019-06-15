@@ -1,0 +1,17 @@
+{
+  "apps" : [{
+    "name": "roon-extension-ircontrol",
+    "script": "app.js",
+    "out_file": "/run/log/roon-extension-ircontrol-out.log",
+    "watch": true,
+    "ignore_watch": ["node_modules","config.json"],
+    "watch_options": {
+      "usePolling": true,
+      "alwaysStat": true,
+      "useFsEvents": false
+    },
+    "env": {
+        "NODE_ENV": "development"
+    }
+  }]
+}

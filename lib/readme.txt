@@ -1,0 +1,1 @@
+lirc_node - local copy with required fix in removeListener

@@ -1,0 +1,64 @@
+{
+  "_from": "github:alexbain/lirc_node",
+  "_id": "lirc_node@0.0.4",
+  "_inBundle": false,
+  "_integrity": "",
+  "_location": "/lirc_node",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "git",
+    "raw": "lirc_node@github:alexbain/lirc_node",
+    "name": "lirc_node",
+    "escapedName": "lirc_node",
+    "rawSpec": "github:alexbain/lirc_node",
+    "saveSpec": "github:alexbain/lirc_node",
+    "fetchSpec": null,
+    "gitCommittish": null
+  },
+  "_requiredBy": [
+    "/"
+  ],
+  "_resolved": "github:alexbain/lirc_node#5456d79ff3a75fe9f66935338acd982e43eb6ce3",
+  "_spec": "lirc_node@github:alexbain/lirc_node",
+  "_where": "/home/ubuntu/sambashare/roon-extension-ircontrol",
+  "author": {
+    "name": "Alex Bain",
+    "email": "alex@alexba.in"
+  },
+  "bugs": {
+    "url": "https://github.com/alexbain/lirc_node/issues"
+  },
+  "bundleDependencies": false,
+  "contributors": [
+    {
+      "name": "Mark Stickley",
+      "email": "markstickley@theyakshack.co.uk"
+    },
+    {
+      "name": "Wouter Verweirder"
+    }
+  ],
+  "dependencies": {},
+  "deprecated": false,
+  "description": "Control LIRC from Node",
+  "devDependencies": {
+    "mocha": "2.3.3",
+    "q": "1.4.1",
+    "should": "7.1.0",
+    "sinon": "1.17.1"
+  },
+  "homepage": "https://github.com/alexbain/lirc_node#readme",
+  "keywords": [
+    "lirc"
+  ],
+  "main": "lib/lirc_node.js",
+  "name": "lirc_node",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/alexbain/lirc_node.git"
+  },
+  "scripts": {
+    "test": "NODE_ENV=test mocha --require should --require test/common.js --reporter dot --timeout 5000 test/*.js"
+  },
+  "version": "0.0.4"
+}

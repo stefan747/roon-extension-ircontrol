@@ -1,6 +1,6 @@
 {
   "_from": "roon-extension-ircontrol",
-  "_id": "roon-extension-ircontrol@1.0.0",
+  "_id": "roon-extension-ircontrol@2.0.0",
   "_inBundle": false,
   "_integrity": "sha512-97Ajn/8m0KZcXcvKKGvBqWedepdzeBKcpS4NK1eoociQxDYOm51bmFZjklnjTUE9+cLJ93SJJhS5f/2ZTQfFVg==",
   "_location": "/roon-extension-ircontrol",
@@ -25,18 +25,21 @@
   "author": {
     "name": "Stefan Kruzlik"
   },
-  "bundleDependencies": false,
+  "bundleDependencies": [],
   "dependencies": {
-    "lirc_node": "github:alexbain/lirc_node",
+    "bottleneck": "^2.19.5",
+    "express": "^5.2.1",
+    "lirc_node": "file:lib/lirc_node",
     "node-roon-api": "github:roonlabs/node-roon-api",
     "node-roon-api-settings": "github:roonlabs/node-roon-api-settings",
     "node-roon-api-source-control": "github:roonlabs/node-roon-api-source-control",
-    "node-roon-api-status": "github:roonlabs/node-roon-api-status"
+    "node-roon-api-status": "github:roonlabs/node-roon-api-status",
+    "node-roon-api-volume-control": "github:roonlabs/node-roon-api-volume-control"
   },
   "deprecated": false,
   "description": "Roon Extension to let Roon control IR devices stand by",
   "license": "Apache-2.0",
   "main": "app.js",
   "name": "roon-extension-ircontrol",
-  "version": "1.0.1"
+  "version": "2.0.0"
 }

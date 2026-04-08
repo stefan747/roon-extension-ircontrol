@@ -266,6 +266,20 @@ function makelayout(settings) {
                     max: 10000,
                     setting: lircRemote + "_1_inputChangeDelay"
                 });
+                remoteGroup.items.push({
+                    type: "integer",
+                    title: "Input Select Retry Count",
+                    min: 0,
+                    max: 10,
+                    setting: lircRemote + "_1_inputSelectRetry"
+                });
+                remoteGroup.items.push({
+                    type: "integer",
+                    title: "Input Select Retry Interval (ms)",
+                    min: 100,
+                    max: 10000,
+                    setting: lircRemote + "_1_inputSelectRetryInterval"
+                });
             } else if (settings[lircRemote + "_1_inputSelectType"] === "UpDown") {
                 remoteGroup.items.push({
                     type: "dropdown",
@@ -314,6 +328,20 @@ function makelayout(settings) {
                     max: 10000,
                     setting: lircRemote + "_1_inputChangeDelay"
                 });
+                remoteGroup.items.push({
+                    type: "integer",
+                    title: "Input Select Retry Count",
+                    min: 0,
+                    max: 10,
+                    setting: lircRemote + "_1_inputSelectRetry"
+                });
+                remoteGroup.items.push({
+                    type: "integer",
+                    title: "Input Select Retry Interval (ms)",
+                    min: 100,
+                    max: 10000,
+                    setting: lircRemote + "_1_inputSelectRetryInterval"
+                });
             } else if (settings[lircRemote + "_1_inputSelectType"] === "Discrete") {
                 remoteGroup.items.push({
                     type: "dropdown",
@@ -324,6 +352,20 @@ function makelayout(settings) {
                     }
                     ].concat(commands),
                     setting: lircRemote + "_1_inputSelect"
+                });
+                remoteGroup.items.push({
+                    type: "integer",
+                    title: "Input Select Retry Count",
+                    min: 0,
+                    max: 10,
+                    setting: lircRemote + "_1_inputSelectRetry"
+                });
+                remoteGroup.items.push({
+                    type: "integer",
+                    title: "Input Select Retry Interval (ms)",
+                    min: 100,
+                    max: 10000,
+                    setting: lircRemote + "_1_inputSelectRetryInterval"
                 });
             }
 
@@ -414,6 +456,20 @@ function makelayout(settings) {
                                 }
                                 ].concat(commands),
                                 setting: lircRemote + "_" + i + "_inputSelect"
+                            });
+                            remoteGroup.items.push({
+                                type: "integer",
+                                title: "Input Select Retry Count",
+                                min: 0,
+                                max: 10,
+                                setting: lircRemote + "_" + i + "_inputSelectRetry"
+                            });
+                            remoteGroup.items.push({
+                                type: "integer",
+                                title: "Input Select Retry Interval (ms)",
+                                min: 100,
+                                max: 10000,
+                                setting: lircRemote + "_" + i + "_inputSelectRetryInterval"
                             });
                         }
                         remoteGroup.items.push({
@@ -535,11 +591,11 @@ function setup() {
 		console.log("[IRControl Extension] Setup: ", lircRemote);
 
 		if (irdevice.remotes[lircRemote] && irdevice.remotes[lircRemote].source_controls) {
-			irdevice.remotes[lircRemote].source_controls.forEach((source_control, index, controls) => {
+			irdevice.remotes[lircRemote].source_controls.forEach((source_control) => {
 				console.log(`Destroying previous source control for ${lircRemote}`);
 				source_control.destroy();
-				controls.splice(index, 1);
 			});
+			irdevice.remotes[lircRemote].source_controls = [];
 		}
 		if (irdevice.remotes[lircRemote] && irdevice.remotes[lircRemote].volume_control) {
 			console.log(`Destroying previous volume control for ${lircRemote}`);
@@ -576,14 +632,12 @@ function setInputSequentially(lircRemote, i, currentInput, iteration) {
     let inputSelectUpCommand = mysettings[lircRemote + "_1_inputSelectUp"];
     let inputSelectDownCommand = mysettings[lircRemote + "_1_inputSelectDown"];
 
+    let inputSelectRetry = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetry"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetry"]) || 0;
+    let inputSelectRetryInterval = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetryInterval"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetryInterval"]) || 1000;
+
     function sendAndWait(cmd, callback) {
-        limiter.schedule(() => {
-            return new Promise((resolve) => {
-                irdevice.control.irsend.send_once(lircRemote, cmd, (err, stdout, stderr) => {
-                    resolve();
-                });
-            });
-        }).then(callback);
+        irSendOnceWithRetry(lircRemote, cmd, inputSelectRetry, inputSelectRetryInterval);
+        setTimeout(callback, inputSelectRetry * inputSelectRetryInterval + 100);
     }
 
     if (inputSelectType === "UpDown") {
@@ -771,7 +825,9 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                     }
                 } else {
                     setTimeout(() => {
-                        limiter.schedule(() => { irSendOnceWithRetry(lircRemote, mysettings[lircRemote + "_" + i + "_inputSelect"]) });
+                        let inputSelectRetry = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetry"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetry"]) || 0;
+                        let inputSelectRetryInterval = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetryInterval"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetryInterval"]) || 1000;
+                        irSendOnceWithRetry(lircRemote, mysettings[lircRemote + "_" + i + "_inputSelect"], inputSelectRetry, inputSelectRetryInterval);
                         set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_inputSelect"]);
 
                     }, mysettings[lircRemote + "_1_startuptime"] * 1000);
@@ -805,7 +861,9 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                     req.send_complete("Success");
                 }
             } else {
-                irSendOnceWithRetry(lircRemote, mysettings[lircRemote + "_" + i + "_inputSelect"]);
+                let inputSelectRetry = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetry"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetry"]) || 0;
+                let inputSelectRetryInterval = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetryInterval"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetryInterval"]) || 1000;
+                irSendOnceWithRetry(lircRemote, mysettings[lircRemote + "_" + i + "_inputSelect"], inputSelectRetry, inputSelectRetryInterval);
                 set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_inputSelect"]);
                 setTimeout(() => {
                     req.send_complete("Success");
@@ -855,8 +913,8 @@ function ev_disconnected(lircRemote, status) {
 		irdevice.remotes[lircRemote].source_controls.forEach((source_control) => {
 			console.log(`Destroying source control ${lircRemote}`);
 			source_control.destroy();
-			//delete (source_control);
 		});
+		irdevice.remotes[lircRemote].source_controls = [];
 	}
 	if (irdevice.remotes[lircRemote].volume_control) {
 		irdevice.remotes[lircRemote].volume_control.destroy();

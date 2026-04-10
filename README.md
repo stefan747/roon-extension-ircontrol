@@ -4,6 +4,13 @@ A [node-roon-api](https://github.com/RoonLabs/node-roon-api) extension providing
 
 ---------------------
 
+## What's New in v2.1.2
+
+- **Perfected Roon Playback Timing:** Fixed an issue where Roon would prematurely start streaming audio before the physical device had finished switching inputs. The extension now strictly waits until the entire IR sequence completes before signaling "Success" to Roon, ensuring you never miss the first seconds of a song.
+- **Immediate Cross-Input Muting:** When triggering an input switch, the extension now instantly marks all old inputs as "deselected" in Roon. This explicitly commands Roon to halt playback on the previous active zone while the device is busy switching over to the new one.
+
+---------------------
+
 ## What's New in v2.1.1
 
 This update brings improved reliability and robust handling of Roon Core interactions, along with expanded IR retry capabilities:

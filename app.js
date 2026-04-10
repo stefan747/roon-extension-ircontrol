@@ -34,7 +34,7 @@ const limiter = new Bottleneck({
 var roon = new RoonApi({
 		extension_id: 'com.stefan747.roon.IRControl',
 		display_name: 'IR Control',
-		display_version: "2.1.1",
+		display_version: "2.1.2",
 		publisher: 'Stefan Kruzlik',
 		email: 'stefan.kruzlik@gmail.com',
 		website: 'https://github.com/stefan747/roon-extension-IRControl'
@@ -633,7 +633,7 @@ function setup() {
 
 }
 
-function setInputSequentially(lircRemote, i, currentInput, iteration) {
+function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
     let inputSelectType = mysettings[lircRemote + "_1_inputSelectType"];
     let inputSelectCommand = mysettings[lircRemote + "_1_inputSelect"];
     let inputSelectUpCommand = mysettings[lircRemote + "_1_inputSelectUp"];
@@ -653,27 +653,31 @@ function setInputSequentially(lircRemote, i, currentInput, iteration) {
         if (currentInput < targetInput) {
             sendAndWait(inputSelectUpCommand, () => {
                 currentInput++;
+                mysettings[lircRemote + "_currentInput"] = currentInput.toString();
+                roon.save_config("settings", mysettings);
                 if (currentInput !== targetInput) {
                     setTimeout(() => {
-                        setInputSequentially(lircRemote, i, currentInput, iteration + 1);
+                        setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
                     }, mysettings[lircRemote + "_1_inputChangeDelay"]);
                 } else {
-                    finalizeInputSelection(lircRemote, i);
+                    finalizeInputSelection(lircRemote, i, req);
                 }
             });
         } else if (currentInput > targetInput) {
             sendAndWait(inputSelectDownCommand, () => {
                 currentInput--;
+                mysettings[lircRemote + "_currentInput"] = currentInput.toString();
+                roon.save_config("settings", mysettings);
                 if (currentInput !== targetInput) {
                     setTimeout(() => {
-                        setInputSequentially(lircRemote, i, currentInput, iteration + 1);
+                        setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
                     }, mysettings[lircRemote + "_1_inputChangeDelay"]);
                 } else {
-                    finalizeInputSelection(lircRemote, i);
+                    finalizeInputSelection(lircRemote, i, req);
                 }
             });
         } else {
-            finalizeInputSelection(lircRemote, i);
+            finalizeInputSelection(lircRemote, i, req);
         }
     } else if (inputSelectType === "Sequential") {
         // Logic for single-button operation
@@ -683,31 +687,37 @@ function setInputSequentially(lircRemote, i, currentInput, iteration) {
             //need to use ParseInt as all elements in the config are stored as strings
             currentInput = (parseInt(currentInput) + 1) % parseInt(mysettings[lircRemote + "_1_numInputs"]);
             console.log(`setting input to: ${currentInput}`);
-            set_source(lircRemote, i, currentInput);
+            
+            // Only update internal state during intermediate steps so Roon doesn't think we arrived early
+            mysettings[lircRemote + "_currentInput"] = currentInput.toString();
+            roon.save_config("settings", mysettings);
+
             if (currentInput.toString() !== mysettings[lircRemote + "_" + i + "_requestedInput"]) {
                 if (iteration == 1) {
                     setTimeout(function () {
-                        setInputSequentially(lircRemote, i, currentInput, iteration + 1);
+                        setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
                     }, mysettings[lircRemote + "_1_inputChangeDelay"]);
                 } else {
-                    setInputSequentially(lircRemote, i, currentInput, iteration + 1);
+                    setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
                 }
             } else {
-                if (mysettings[lircRemote + "_1_volumeResetOnInputChange"] == "Y") {
-                    set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"]);
-                }
+                finalizeInputSelection(lircRemote, i, req);
             }
         });
     } else {
         // Logic for discrete operation (no input selection needed)
-        finalizeInputSelection(lircRemote, i);
+        finalizeInputSelection(lircRemote, i, req);
     }
 }
 
-function finalizeInputSelection(lircRemote, i) {
+function finalizeInputSelection(lircRemote, i, req) {
     set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
     if (mysettings[lircRemote + "_1_volumeResetOnInputChange"] == "Y") {
         set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"]);
+    }
+    irdevice.remotes[lircRemote]._isSwitching = false;
+    if (req) {
+        req.send_complete("Success");
     }
 }
 
@@ -802,6 +812,16 @@ function ev_connected(lircRemote, status) {
 	}
 }
 
+function deselect_all(lircRemote) {
+    if (irdevice.remotes[lircRemote] && irdevice.remotes[lircRemote].source_controls) {
+        irdevice.remotes[lircRemote].source_controls.forEach((source_control) => {
+            source_control.update_state({
+                status: "deselected"
+            });
+        });
+    }
+}
+
 function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
     if (irdevice.remotes[lircRemote]._isSwitching) {
         console.log(`Already switching input for ${lircRemote}, ignoring concurrent request`);
@@ -809,6 +829,16 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
         return;
     }
     irdevice.remotes[lircRemote]._isSwitching = true;
+
+    // Immediately deselect all inputs in Roon so music stops playing on the old input
+    // while the physical device is busy switching.
+    let targetVal = mysettings[lircRemote + "_1_inputSelectType"] === "Sequential" || mysettings[lircRemote + "_1_inputSelectType"] === "UpDown" ? 
+                    mysettings[lircRemote + "_" + i + "_requestedInput"] : 
+                    mysettings[lircRemote + "_" + i + "_inputSelect"];
+                    
+    if (currentStatus == "standby" || mysettings[lircRemote + "_currentInput"] !== targetVal) {
+        deselect_all(lircRemote);
+    }
 
     if (currentStatus == "standby") {
         console.log(`Convenience switch for ${lircRemote}:${i}`);
@@ -821,6 +851,7 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
 
             if (mysettings[lircRemote + "_1_inputSelectType"] === "Discrete" && mysettings[lircRemote + "_" + i + "_inputSelect"] == undefined) {
                 set_source(lircRemote, i, "Selected");
+                irdevice.remotes[lircRemote]._isSwitching = false;
             } else {
                 //IR set input after startup delay
                 if (mysettings[lircRemote + "_1_inputSelectType"] === "Sequential" || mysettings[lircRemote + "_1_inputSelectType"] === "UpDown") {
@@ -829,13 +860,15 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                     }
                     if (mysettings[lircRemote + "_currentInput"] !== mysettings[lircRemote + "_" + i + "_requestedInput"]) {
                         setTimeout(function () {
-                            setInputSequentially(lircRemote, i, mysettings[lircRemote + "_currentInput"] ? mysettings[lircRemote + "_currentInput"] : 0, 1);
+                            setInputSequentially(lircRemote, i, mysettings[lircRemote + "_currentInput"] ? mysettings[lircRemote + "_currentInput"] : 0, 1, req);
                         }, mysettings[lircRemote + "_1_startuptime"] * 1000);
 
                     } else {
                         set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
                         setTimeout(() => {
                             set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"]);
+                            irdevice.remotes[lircRemote]._isSwitching = false;
+                            req.send_complete("Success");
                         }, mysettings[lircRemote + "_1_startuptime"] * 1000);
                     }
                 } else {
@@ -844,22 +877,19 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                         let inputSelectRetryInterval = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetryInterval"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetryInterval"]) || 1000;
                         irSendOnceWithRetry(lircRemote, mysettings[lircRemote + "_" + i + "_inputSelect"], inputSelectRetry, inputSelectRetryInterval);
                         set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_inputSelect"]);
-
+                        irdevice.remotes[lircRemote]._isSwitching = false;
+                        req.send_complete("Success");
                     }, mysettings[lircRemote + "_1_startuptime"] * 1000);
                 }
             }
-            setTimeout(() => {
-                req.send_complete("Success");
-                irdevice.remotes[lircRemote]._isSwitching = false;
-                //  set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"]);
-            }, mysettings[lircRemote + "_1_startuptime"] * 1000);
+            // req.send_complete("Success") removed here because it's handled in the branches or setInputSequentially
         }, mysettings[lircRemote + "_1_startupDelay"] * 1000);
     } else {
         if (mysettings[lircRemote + "_1_inputSelectType"] === "Discrete" && mysettings[lircRemote + "_" + i + "_inputSelect"] == undefined) {
   
             set_source(lircRemote, i, "Selected");
-            req.send_complete("Success");
             irdevice.remotes[lircRemote]._isSwitching = false;
+            req.send_complete("Success");
         } else {
             //IR set input when device is already on
             if (mysettings[lircRemote + "_1_inputSelectType"] === "Sequential" || mysettings[lircRemote + "_1_inputSelectType"] === "UpDown") {
@@ -869,15 +899,11 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                 console.log("currentInput: " + mysettings[lircRemote + "_currentInput"]);
                 if (mysettings[lircRemote + "_currentInput"] !== mysettings[lircRemote + "_" + i + "_requestedInput"]) {
   
-                    setInputSequentially(lircRemote, i, mysettings[lircRemote + "_currentInput"] ? mysettings[lircRemote + "_currentInput"] : 0, 1);
-                    setTimeout(() => {
-                        req.send_complete("Success");
-                        irdevice.remotes[lircRemote]._isSwitching = false;
-                    }, (mysettings[lircRemote + "_1_inputChangeDelay"] ? mysettings[lircRemote + "_1_inputChangeDelay"] : 1000));
+                    setInputSequentially(lircRemote, i, mysettings[lircRemote + "_currentInput"] ? mysettings[lircRemote + "_currentInput"] : 0, 1, req);
                 } else {
                     set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
-                    req.send_complete("Success");
                     irdevice.remotes[lircRemote]._isSwitching = false;
+                    req.send_complete("Success");
                 }
             } else {
                 let inputSelectRetry = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetry"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetry"]) || 0;
@@ -885,8 +911,8 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                 irSendOnceWithRetry(lircRemote, mysettings[lircRemote + "_" + i + "_inputSelect"], inputSelectRetry, inputSelectRetryInterval);
                 set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_inputSelect"]);
                 setTimeout(() => {
-                    req.send_complete("Success");
                     irdevice.remotes[lircRemote]._isSwitching = false;
+                    req.send_complete("Success");
                 }, (mysettings[lircRemote + "_1_inputChangeDelay"] ? mysettings[lircRemote + "_1_inputChangeDelay"] : 1000));
             }
         }

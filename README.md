@@ -4,6 +4,19 @@ A [node-roon-api](https://github.com/RoonLabs/node-roon-api) extension providing
 
 ---------------------
 
+## What's New in v2.1.1
+
+This update brings improved reliability and robust handling of Roon Core interactions, along with expanded IR retry capabilities:
+
+- **Expanded IR Retry Options:** "Input Select Retry Count" and "Input Select Retry Interval (ms)" are now fully supported across all Input Select types (Discrete, Sequential, and Up/Down), ensuring your device receives the command even if the first signal is missed.
+- **Improved Convenience Switch Reliability:** Added an execution lock to prevent erratic input switching. Roon sometimes sends concurrent switch commands when you press play; the extension now safely ignores overlapping requests until the current IR sequence completes.
+- **Dynamic Name Updates:** Fixed an issue where changing an input's name was ignored by Roon. The extension now dynamically generates the internal control key based on the name, ensuring Roon instantly displays any name changes.
+- **Seamless Settings Application:** Re-engineered the settings save logic. To bypass Roon Core caching quirks that caused devices to drop their Zone assignments, the extension now gracefully restarts via PM2 when settings are saved, applying changes instantly and cleanly.
+- **Standalone Volume Control Fix:** Resolved a bug that prevented volume controls from registering in Roon if no source control was configured alongside them.
+- **Source Control Registration Fix:** Fixed a loop issue that prevented multiple source controls from correctly unregistering and re-registering when the extension reloaded.
+
+---------------------
+
 ## What's New in v2.0.0
 
 The extension has been significantly upgraded from simple power control to a full-featured, multi-zone IR command center:

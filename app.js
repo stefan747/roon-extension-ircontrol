@@ -34,7 +34,7 @@ const limiter = new Bottleneck({
 var roon = new RoonApi({
 		extension_id: 'com.stefan747.roon.IRControl',
 		display_name: 'IR Control',
-		display_version: "2.0.0",
+		display_version: "2.1.1",
 		publisher: 'Stefan Kruzlik',
 		email: 'stefan.kruzlik@gmail.com',
 		website: 'https://github.com/stefan747/roon-extension-IRControl'
@@ -503,8 +503,13 @@ var svc_settings = new RoonApiSettings(roon, {
 			if (!isdryrun && !l.has_error) {
 				mysettings = l.values;
 				svc_settings.update_settings(l);
-				setup();
 				roon.save_config("settings", mysettings);
+				// Roon's API wrapper and core can become desynchronized if devices are destroyed 
+				// and immediately recreated with the same control_key. 
+				// Exiting the process allows PM2 to restart the extension and cleanly initialize the new configuration.
+				setTimeout(() => {
+					process.exit(0);
+				}, 500);
 			}
 		}
 	});
@@ -587,7 +592,7 @@ function setup() {
 	irdevice.control.init();
 	console.log(util.inspect(irdevice.remotes));
 	setTimeout(() => {
-	for (var lircRemote in irdevice.control.remotes) {
+	for (let lircRemote in irdevice.control.remotes) {
 		console.log("[IRControl Extension] Setup: ", lircRemote);
 
 		if (irdevice.remotes[lircRemote] && irdevice.remotes[lircRemote].source_controls) {
@@ -600,7 +605,7 @@ function setup() {
 		if (irdevice.remotes[lircRemote] && irdevice.remotes[lircRemote].volume_control) {
 			console.log(`Destroying previous volume control for ${lircRemote}`);
 			irdevice.remotes[lircRemote].volume_control.destroy();
-			delete (irdevice.volume_control);
+			delete (irdevice.remotes[lircRemote].volume_control);
 		}
 
 		if(!irdevice.remotes[lircRemote]) {
@@ -611,13 +616,15 @@ function setup() {
 			irdevice.remotes[lircRemote]._deviceStatus = mysettings[lircRemote + "_deviceStatus"] ? mysettings[lircRemote + "_deviceStatus"] : "Standby"
 		}
 
-		//TODO: will need to fix to check any remote for either volume or source control (sinlge is sufficient to consider extension configured)
-		if (!mysettings[lircRemote + "_1_sourceControl"] || mysettings[lircRemote + "_1_sourceControl"] == "N") {
+		if ((!mysettings[lircRemote + "_1_sourceControl"] || mysettings[lircRemote + "_1_sourceControl"] == "N") && 
+            (!mysettings[lircRemote + "_volumeControl"] || mysettings[lircRemote + "_volumeControl"] == "N")) {
 			svc_status.set_status("Not configured, please check settings.", true);
 			ev_disconnected(lircRemote, "disconnected");
 		} else {
 			console.log(`Creating new remote ${lircRemote}`);
-			ev_connected(lircRemote, "Standby");
+			setTimeout((remote) => {
+			    ev_connected(remote, "Standby");
+			}, 500, lircRemote);
 		}
 	}
 	svc_status.set_status("Connected to IRControl", false);
@@ -786,6 +793,7 @@ function ev_connected(lircRemote, status) {
 				}
 			});
 	}
+
 	let i = 1;
 	irdevice.remotes[lircRemote].source_controls = [];
 	while (mysettings[lircRemote + "_" + i + "_sourceControl"] == "Y") {
@@ -795,6 +803,13 @@ function ev_connected(lircRemote, status) {
 }
 
 function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
+    if (irdevice.remotes[lircRemote]._isSwitching) {
+        console.log(`Already switching input for ${lircRemote}, ignoring concurrent request`);
+        req.send_complete("Success");
+        return;
+    }
+    irdevice.remotes[lircRemote]._isSwitching = true;
+
     if (currentStatus == "standby") {
         console.log(`Convenience switch for ${lircRemote}:${i}`);
         //in standby first wait for 'startupDelay'
@@ -835,6 +850,7 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
             }
             setTimeout(() => {
                 req.send_complete("Success");
+                irdevice.remotes[lircRemote]._isSwitching = false;
                 //  set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"]);
             }, mysettings[lircRemote + "_1_startuptime"] * 1000);
         }, mysettings[lircRemote + "_1_startupDelay"] * 1000);
@@ -843,6 +859,7 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
   
             set_source(lircRemote, i, "Selected");
             req.send_complete("Success");
+            irdevice.remotes[lircRemote]._isSwitching = false;
         } else {
             //IR set input when device is already on
             if (mysettings[lircRemote + "_1_inputSelectType"] === "Sequential" || mysettings[lircRemote + "_1_inputSelectType"] === "UpDown") {
@@ -855,10 +872,12 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                     setInputSequentially(lircRemote, i, mysettings[lircRemote + "_currentInput"] ? mysettings[lircRemote + "_currentInput"] : 0, 1);
                     setTimeout(() => {
                         req.send_complete("Success");
+                        irdevice.remotes[lircRemote]._isSwitching = false;
                     }, (mysettings[lircRemote + "_1_inputChangeDelay"] ? mysettings[lircRemote + "_1_inputChangeDelay"] : 1000));
                 } else {
                     set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
                     req.send_complete("Success");
+                    irdevice.remotes[lircRemote]._isSwitching = false;
                 }
             } else {
                 let inputSelectRetry = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetry"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetry"]) || 0;
@@ -867,6 +886,7 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                 set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_inputSelect"]);
                 setTimeout(() => {
                     req.send_complete("Success");
+                    irdevice.remotes[lircRemote]._isSwitching = false;
                 }, (mysettings[lircRemote + "_1_inputChangeDelay"] ? mysettings[lircRemote + "_1_inputChangeDelay"] : 1000));
             }
         }
@@ -874,10 +894,11 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
 }
 
 function create_source_control(lircRemote, i) {
+    let displayName = lircRemote + (mysettings[lircRemote + "_" + i + "_requestedInputName"] ? mysettings[lircRemote + "_" + i + "_requestedInputName"] : mysettings[lircRemote + "_" + i + "_inputSelect"] ? mysettings[lircRemote + "_" + i + "_inputSelect"] : "");
     let deviceDefinition = {
         state: {
-            control_key: lircRemote + i,
-            display_name: lircRemote + (mysettings[lircRemote + "_" + i + "_requestedInputName"] ? mysettings[lircRemote + "_" + i + "_requestedInputName"] : mysettings[lircRemote + "_" + i + "_inputSelect"] ? mysettings[lircRemote + "_" + i + "_inputSelect"] : ""),
+            control_key: lircRemote + i + "_" + displayName.replace(/[^a-zA-Z0-9]/g, ""),
+            display_name: displayName,
             supports_standby: true,
             status: irdevice.remotes[lircRemote]._deviceStatus == "Standby" ? "standby" :
                 (mysettings[lircRemote + "_activeIndex"] === i || (!mysettings[lircRemote + "_activeIndex"] && (mysettings[lircRemote + "_deviceStatus"] == mysettings[lircRemote + "_" + i + "_inputSelect"] || mysettings[lircRemote + "_deviceStatus"] == "Selected")) ? "selected" : "deselected")
@@ -896,6 +917,8 @@ function create_source_control(lircRemote, i) {
     };
     
     let sourceControl = svc_source_control.new_device(deviceDefinition);
+    sourceControl._index = i;
+    sourceControl._displayName = deviceDefinition.state.display_name;
     // Attach the doConvenienceSwitch directly to the object so we can call it from Express
     sourceControl._executeConvenienceSwitch = function(req) {
         let currentStatus = irdevice.remotes[lircRemote]._deviceStatus == "Standby" ? "standby" :

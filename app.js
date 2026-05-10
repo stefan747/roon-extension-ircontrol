@@ -995,6 +995,7 @@ function set_source(lircRemote, i, val) {
         mysettings[lircRemote + "_currentInput"] = val.toString();
     }
     mysettings[lircRemote + "_deviceStatus"] = val.toString();
+    irdevice.remotes[lircRemote]._deviceStatus = val.toString();
     mysettings[lircRemote + "_activeIndex"] = i;
     roon.save_config("settings", mysettings);
 }

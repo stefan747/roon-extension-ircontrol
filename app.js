@@ -34,7 +34,7 @@ const limiter = new Bottleneck({
 var roon = new RoonApi({
 		extension_id: 'com.stefan747.roon.IRControl',
 		display_name: 'IR Control',
-		display_version: "2.1.2",
+		display_version: "2.1.4",
 		publisher: 'Stefan Kruzlik',
 		email: 'stefan.kruzlik@gmail.com',
 		website: 'https://github.com/stefan747/roon-extension-IRControl'
@@ -685,21 +685,17 @@ function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
 
         sendAndWait(inputSelectCommand, () => {
             //need to use ParseInt as all elements in the config are stored as strings
-            currentInput = (parseInt(currentInput) + 1) % parseInt(mysettings[lircRemote + "_1_numInputs"]);
+            currentInput = (parseInt(currentInput) % parseInt(mysettings[lircRemote + "_1_numInputs"])) + 1;
             console.log(`setting input to: ${currentInput}`);
             
             // Only update internal state during intermediate steps so Roon doesn't think we arrived early
             mysettings[lircRemote + "_currentInput"] = currentInput.toString();
             roon.save_config("settings", mysettings);
 
-            if (currentInput.toString() !== mysettings[lircRemote + "_" + i + "_requestedInput"]) {
-                if (iteration == 1) {
-                    setTimeout(function () {
-                        setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
-                    }, mysettings[lircRemote + "_1_inputChangeDelay"]);
-                } else {
+            if (currentInput !== targetInput) {
+                setTimeout(function () {
                     setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
-                }
+                }, mysettings[lircRemote + "_1_inputChangeDelay"]);
             } else {
                 finalizeInputSelection(lircRemote, i, req);
             }
@@ -711,13 +707,18 @@ function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
 }
 
 function finalizeInputSelection(lircRemote, i, req) {
-    set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
-    if (mysettings[lircRemote + "_1_volumeResetOnInputChange"] == "Y") {
-        set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"]);
+    function completeSwitch() {
+        set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
+        irdevice.remotes[lircRemote]._isSwitching = false;
+        if (req) {
+            req.send_complete("Success");
+        }
     }
-    irdevice.remotes[lircRemote]._isSwitching = false;
-    if (req) {
-        req.send_complete("Success");
+
+    if (mysettings[lircRemote + "_1_volumeResetOnInputChange"] == "Y") {
+        set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"], completeSwitch);
+    } else {
+        completeSwitch();
     }
 }
 
@@ -864,11 +865,12 @@ function doConvenienceSwitch(lircRemote, i, currentStatus, req) {
                         }, mysettings[lircRemote + "_1_startuptime"] * 1000);
 
                     } else {
-                        set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
                         setTimeout(() => {
-                            set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"]);
-                            irdevice.remotes[lircRemote]._isSwitching = false;
-                            req.send_complete("Success");
+                            set_volume(lircRemote, mysettings[lircRemote + "_" + i + "_initialvolume"], () => {
+                                set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
+                                irdevice.remotes[lircRemote]._isSwitching = false;
+                                req.send_complete("Success");
+                            });
                         }, mysettings[lircRemote + "_1_startuptime"] * 1000);
                     }
                 } else {
@@ -1000,15 +1002,21 @@ function set_source(lircRemote, i, val) {
     roon.save_config("settings", mysettings);
 }
 
-function set_volume(lircRemote, volumeUpTime) {
+function set_volume(lircRemote, volumeUpTime, callback) {
+	let duration = parseInt(volumeUpTime) || 0;
+	if (duration <= 0 || !mysettings[lircRemote + "_volumeUp"]) {
+		if (callback) callback();
+		return;
+	}
 	irdevice.control.irsend.send_start(lircRemote, mysettings[lircRemote + "_volumeUp"], function () {
-									console.log("Started sending volume up command!");
-	
-	setTimeout(() => {
-	irdevice.control.irsend.send_stop(lircRemote, mysettings[lircRemote + "_volumeUp"], function () {
-									console.log("Stopped sending volume up command!");
-									});
-	}, volumeUpTime);
+		console.log("Started sending volume up command!");
+
+		setTimeout(() => {
+			irdevice.control.irsend.send_stop(lircRemote, mysettings[lircRemote + "_volumeUp"], function () {
+				console.log("Stopped sending volume up command!");
+				if (callback) callback();
+			});
+		}, duration);
 	});
 }
 

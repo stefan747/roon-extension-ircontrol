@@ -1,6 +1,6 @@
 {
   "name": "roon-extension-ircontrol",
-  "version": "2.1.3",
+  "version": "2.1.4",
   "description": "Roon Extension to let Roon control IR devices stand by",
   "main": "app.js",
   "author": {

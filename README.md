@@ -4,6 +4,19 @@ A [node-roon-api](https://github.com/RoonLabs/node-roon-api) extension providing
 
 ---------------------
 
+## What's New in v2.1.4
+
+- **Sequential Input Switching Fix:** Fixed 1-based input wrap-around calculation (`1..N`) and ensured `Input Change Delay` is applied consistently between every step in multi-step sequential input transitions.
+- **Volume Ramp Playback Synchronization:** When an initial volume hold (`initialvolume`) is configured on input change or wake from standby, the extension now waits for the volume ramp to complete before marking the input as selected and signaling Roon to start playback.
+
+---------------------
+
+## What's New in v2.1.3
+
+- **Webhook State Synchronization:** Fixed internal device status tracking (`_deviceStatus`) so webhook-triggered switches remain in sync with Roon source changes after restarts.
+
+---------------------
+
 ## What's New in v2.1.2
 
 - **Perfected Roon Playback Timing:** Fixed an issue where Roon would prematurely start streaming audio before the physical device had finished switching inputs. The extension now strictly waits until the entire IR sequence completes before signaling "Success" to Roon, ensuring you never miss the first seconds of a song.

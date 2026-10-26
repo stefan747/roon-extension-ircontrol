@@ -4,6 +4,13 @@ A [node-roon-api](https://github.com/RoonLabs/node-roon-api) extension providing
 
 ---------------------
 
+## What's New in v2.1.5
+
+- **Consistent Initial Volume Accuracy:** Added `Input Change Delay` after the final input step so the device finishes switching inputs before ramping volume, and routed `set_volume` (`send_start` / `send_stop`) through the LIRC rate limiter with `busy: repeating` retry handling.
+- **Accurate IR Retry Completion Tracking:** `sendAndWait` now waits for all scheduled `irSendOnceWithRetry` attempts (including any LIRC `busy: repeating` retries) to finish before advancing to the next step.
+
+---------------------
+
 ## What's New in v2.1.4
 
 - **Sequential Input Switching Fix:** Fixed 1-based input wrap-around calculation (`1..N`) and ensured `Input Change Delay` is applied consistently between every step in multi-step sequential input transitions.

@@ -34,7 +34,7 @@ const limiter = new Bottleneck({
 var roon = new RoonApi({
 		extension_id: 'com.stefan747.roon.IRControl',
 		display_name: 'IR Control',
-		display_version: "2.1.4",
+		display_version: "2.1.5",
 		publisher: 'Stefan Kruzlik',
 		email: 'stefan.kruzlik@gmail.com',
 		website: 'https://github.com/stefan747/roon-extension-IRControl'
@@ -642,10 +642,13 @@ function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
     let inputSelectRetry = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetry"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetry"]) || 0;
     let inputSelectRetryInterval = parseInt(mysettings[lircRemote + "_" + i + "_inputSelectRetryInterval"]) || parseInt(mysettings[lircRemote + "_1_inputSelectRetryInterval"]) || 1000;
 
+    // Wait for LIRC to finish transmitting all retry attempts (including any busy retries)
+    // before advancing to the next input step or starting the volume ramp.
     function sendAndWait(cmd, callback) {
-        irSendOnceWithRetry(lircRemote, cmd, inputSelectRetry, inputSelectRetryInterval);
-        setTimeout(callback, inputSelectRetry * inputSelectRetryInterval + 100);
+        irSendOnceWithRetry(lircRemote, cmd, inputSelectRetry, inputSelectRetryInterval, callback);
     }
+
+    let inputChangeDelay = parseInt(mysettings[lircRemote + "_1_inputChangeDelay"]) || 0;
 
     if (inputSelectType === "UpDown") {
         // Logic for two-button operation
@@ -655,26 +658,30 @@ function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
                 currentInput++;
                 mysettings[lircRemote + "_currentInput"] = currentInput.toString();
                 roon.save_config("settings", mysettings);
-                if (currentInput !== targetInput) {
-                    setTimeout(() => {
+                // Always wait inputChangeDelay after every step (including the final step)
+                // so the physical device finishes switching inputs before volume ramp or playback starts.
+                setTimeout(() => {
+                    if (currentInput !== targetInput) {
                         setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
-                    }, mysettings[lircRemote + "_1_inputChangeDelay"]);
-                } else {
-                    finalizeInputSelection(lircRemote, i, req);
-                }
+                    } else {
+                        finalizeInputSelection(lircRemote, i, req);
+                    }
+                }, inputChangeDelay);
             });
         } else if (currentInput > targetInput) {
             sendAndWait(inputSelectDownCommand, () => {
                 currentInput--;
                 mysettings[lircRemote + "_currentInput"] = currentInput.toString();
                 roon.save_config("settings", mysettings);
-                if (currentInput !== targetInput) {
-                    setTimeout(() => {
+                // Always wait inputChangeDelay after every step (including the final step)
+                // so the physical device finishes switching inputs before volume ramp or playback starts.
+                setTimeout(() => {
+                    if (currentInput !== targetInput) {
                         setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
-                    }, mysettings[lircRemote + "_1_inputChangeDelay"]);
-                } else {
-                    finalizeInputSelection(lircRemote, i, req);
-                }
+                    } else {
+                        finalizeInputSelection(lircRemote, i, req);
+                    }
+                }, inputChangeDelay);
             });
         } else {
             finalizeInputSelection(lircRemote, i, req);
@@ -684,7 +691,7 @@ function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
         let targetInput = parseInt(mysettings[lircRemote + "_" + i + "_requestedInput"]);
 
         sendAndWait(inputSelectCommand, () => {
-            //need to use ParseInt as all elements in the config are stored as strings
+            // Inputs are 1-indexed (1..numInputs); wrap around from numInputs back to 1
             currentInput = (parseInt(currentInput) % parseInt(mysettings[lircRemote + "_1_numInputs"])) + 1;
             console.log(`setting input to: ${currentInput}`);
             
@@ -692,13 +699,15 @@ function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
             mysettings[lircRemote + "_currentInput"] = currentInput.toString();
             roon.save_config("settings", mysettings);
 
-            if (currentInput !== targetInput) {
-                setTimeout(function () {
+            // Always wait inputChangeDelay after every step (including the final step)
+            // so the physical device finishes switching inputs before volume ramp or playback starts.
+            setTimeout(function () {
+                if (currentInput !== targetInput) {
                     setInputSequentially(lircRemote, i, currentInput, iteration + 1, req);
-                }, mysettings[lircRemote + "_1_inputChangeDelay"]);
-            } else {
-                finalizeInputSelection(lircRemote, i, req);
-            }
+                } else {
+                    finalizeInputSelection(lircRemote, i, req);
+                }
+            }, inputChangeDelay);
         });
     } else {
         // Logic for discrete operation (no input selection needed)
@@ -707,6 +716,7 @@ function setInputSequentially(lircRemote, i, currentInput, iteration, req) {
 }
 
 function finalizeInputSelection(lircRemote, i, req) {
+    // Only mark the source as selected and notify Roon after any initial volume ramp completes
     function completeSwitch() {
         set_source(lircRemote, i, mysettings[lircRemote + "_" + i + "_requestedInput"]);
         irdevice.remotes[lircRemote]._isSwitching = false;
@@ -1004,28 +1014,80 @@ function set_source(lircRemote, i, val) {
 
 function set_volume(lircRemote, volumeUpTime, callback) {
 	let duration = parseInt(volumeUpTime) || 0;
-	if (duration <= 0 || !mysettings[lircRemote + "_volumeUp"]) {
+	let command = mysettings[lircRemote + "_volumeUp"];
+	if (duration <= 0 || !command) {
 		if (callback) callback();
 		return;
 	}
-	irdevice.control.irsend.send_start(lircRemote, mysettings[lircRemote + "_volumeUp"], function () {
-		console.log("Started sending volume up command!");
 
-		setTimeout(() => {
-			irdevice.control.irsend.send_stop(lircRemote, mysettings[lircRemote + "_volumeUp"], function () {
-				console.log("Stopped sending volume up command!");
-				if (callback) callback();
-			});
-		}, duration);
+	// Schedule the entire send_start -> duration -> send_stop sequence inside the global
+	// Bottleneck limiter so concurrent IR commands from other devices cannot collide with
+	// LIRC while volume_up is actively repeating.
+	limiter.schedule(() => {
+		return new Promise((resolve) => {
+			function startVolume(attempt) {
+				irdevice.control.irsend.send_start(lircRemote, command, function (error, stdout, stderr) {
+					let isBusy = false;
+					if (error) {
+						console.log(`send_start error: ${error.message}`);
+						if (error.message.includes("busy: repeating")) isBusy = true;
+					}
+					if (stderr) {
+						console.log(`send_start stderr: ${stderr}`);
+						if (stderr.includes("busy: repeating")) isBusy = true;
+					}
+					if (stdout) {
+						console.log(`send_start stdout: ${stdout}`);
+						if (stdout.includes("busy: repeating")) isBusy = true;
+					}
+
+					// Retry send_start if LIRC is still busy finishing a previous IR frame
+					if ((isBusy || error) && attempt < 5) {
+						console.log(`[IRControl] send_start failed/busy for ${lircRemote} ${command}. Retrying in 300ms (attempt ${attempt + 1})...`);
+						setTimeout(() => startVolume(attempt + 1), 300);
+						return;
+					}
+
+					if (error) {
+						console.log(`[IRControl] Aborting volume hold for ${lircRemote} after failed send_start.`);
+						resolve();
+						return;
+					}
+
+					console.log("Started sending volume up command!");
+
+					// Start the hold duration timer only after send_start has succeeded
+					setTimeout(() => {
+						function stopVolume(stopAttempt) {
+							irdevice.control.irsend.send_stop(lircRemote, command, function (stopErr) {
+								// Retry send_stop if an error occurs so LIRC never stays stuck repeating
+								if (stopErr && stopAttempt < 5) {
+									console.log(`[IRControl] send_stop error: ${stopErr.message}. Retrying in 200ms (attempt ${stopAttempt + 1})...`);
+									setTimeout(() => stopVolume(stopAttempt + 1), 200);
+									return;
+								}
+								console.log("Stopped sending volume up command!");
+								resolve();
+							});
+						}
+						stopVolume(0);
+					}, duration);
+				});
+			}
+
+			startVolume(0);
+		});
+	}).then(() => {
+		if (callback) callback();
 	});
 }
 
 
-function irSendOnceWithRetry(lircRemote, command, retryCount = 0, retryInterval = 1000) {
+function irSendOnceWithRetry(lircRemote, command, retryCount = 0, retryInterval = 1000, onComplete) {
     console.log(`IR sending command for remote ${lircRemote}: ${command}, retryCount: ${retryCount}, retryInterval: ${retryInterval}`);
     
     function sendCommand(internalAttempt) {
-        limiter.schedule(() => {
+        return limiter.schedule(() => {
             return new Promise((resolve) => {
                 irdevice.control.irsend.send_once(lircRemote, command, (error, stdout, stderr) => {
                     let isBusy = false;
@@ -1042,21 +1104,32 @@ function irSendOnceWithRetry(lircRemote, command, retryCount = 0, retryInterval 
                         if (stdout.includes("busy: repeating")) isBusy = true;
                     }
 
+                    // Wait for any busy-retry to finish before resolving the attempt promise
                     if (isBusy && internalAttempt < 5) {
                         console.log(`[IRControl] LIRC daemon busy: repeating. Retrying command ${command} in 300ms (attempt ${internalAttempt + 1})...`);
-                        setTimeout(() => sendCommand(internalAttempt + 1), 300);
+                        setTimeout(() => {
+                            sendCommand(internalAttempt + 1).then(resolve);
+                        }, 300);
+                    } else {
+                        resolve();
                     }
-                    resolve();
                 });
             });
         });
     }
 
+    // Track all scheduled retries and invoke onComplete only after all of them finish in LIRC
+    let promises = [];
     for (let i = 0; i <= retryCount; i++) {
-        setTimeout(() => {
-            sendCommand(0);
-        }, i * retryInterval);
+        promises.push(new Promise((resolve) => {
+            setTimeout(() => {
+                sendCommand(0).then(resolve);
+            }, i * retryInterval);
+        }));
     }
+    Promise.all(promises).then(() => {
+        if (onComplete) onComplete();
+    });
 }
 
 
